@@ -1,0 +1,120 @@
+[project]
+name = "starlette-admin-keycloak"
+version = "0.1.0"
+description = "Keycloak authentication provider for starlette-admin"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "python-keycloak>=5.8.0",
+    "starlette-admin>=0.15.0",
+]
+
+[dependency-groups]
+dev = [
+    "starlette>=0.48.0",
+    "uvicorn>=0.38.0",
+]
+lint = [
+    "deptry>=0.23.1",
+    "mypy>=1.18.2",
+    "ruff>=0.14.2",
+]
+test = [
+    "aiosqlite>=0.21.0",
+    "sqlalchemy>=2.0.44",
+]
+types = [
+    "types-jwcrypto>=1.5.0.20250516",
+]
+
+
+[tool.deptry]
+[tool.deptry.per_rule_ignores]
+DEP002 = []
+DEP003 = ["jwcrypto"]
+DEP004 = [
+    "starlette"
+]
+
+[tool.deptry.package_module_name_map]
+uvloop = "uvloop"
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "$version"
+update_changelog_on_bump = true
+version_files = [
+    "pyproject.toml:version"
+]
+
+[tool.mypy]
+plugins = []
+
+strict = true
+follow_imports = "normal"
+ignore_missing_imports = false
+
+allow_redefinition = false
+disallow_any_explicit = false
+ignore_errors = false
+local_partial_types = true
+no_implicit_optional = true
+strict_optional = true
+warn_no_return = true
+warn_return_any = true
+warn_unreachable = true
+
+pretty = true
+show_column_numbers = true
+show_error_codes = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+
+[tool.ruff]
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+fixable = [
+    "F",
+    "E",
+    "W",
+    "I",
+    "COM",
+    "UP",
+    "RUF",
+]
+unfixable = [
+    "F841", # Variable  is assigned to but never used
+]
+select = ["ALL"]
+ignore = [
+    "E501", # Line Length
+    "D10", # Disable mandatory docstrings
+    "D203", # one-blank-line-before-class
+    "D212", # multi-line-summary-first-line
+    "COM812", # ruff format conflict
+    "ISC001", # ruff format conflict
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.ruff.lint.flake8-pytest-style]
+fixture-parentheses = false
+mark-parentheses = false
+
+[tool.ruff.lint.mccabe]
+max-complexity = 6
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = []
+
+[tool.ruff.lint.pep8-naming]
+classmethod-decorators = ["classmethod"]
+staticmethod-decorators = ["staticmethod"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"

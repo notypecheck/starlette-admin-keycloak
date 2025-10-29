@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import dataclasses
 import json
+from datetime import timedelta
 from http import HTTPStatus
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,7 @@ from starlette.responses import RedirectResponse, Response
 from starlette.routing import Match, Mount, Route, WebSocketRoute
 
 from starlette_admin_keycloak._dto import StateDTO
+from starlette_admin_keycloak._utils import generate_secret_value
 from starlette_admin_keycloak.cookies import CookieNames
 from starlette_admin_keycloak.routes import Routes
 
@@ -52,7 +54,7 @@ class KeycloakAuthMiddleware(BaseHTTPMiddleware):
                 current_route = route
                 break
 
-        token_refresh_result = await self._provider.maybe_refresh_tokens(request)
+        await self._provider.maybe_refresh_tokens(request)
 
         if (
             (current_route is not None and current_route.path in self.allow_paths)
@@ -65,21 +67,25 @@ class KeycloakAuthMiddleware(BaseHTTPMiddleware):
             or await self._provider.is_authenticated(request)
         ):
             request.state.access_token = await self._provider.get_access_token(request)
-            response = await call_next(request)
-            if token_refresh_result.should_remove_response_cookies:
-                response.delete_cookie(CookieNames.access)
-                response.delete_cookie(CookieNames.refresh)
-            return response
+            return await call_next(request)
 
         redirect_url = request.url_for(f"admin:{Routes.oauth_callback.name}")
-        state = StateDTO(next_url=str(request.url))
+        state = StateDTO(next_url=str(request.url), csrf_token=generate_secret_value())
         auth_url = self._keycloak_openid.auth_url(
             redirect_uri=str(redirect_url),
             state=base64.b64encode(
                 json.dumps(dataclasses.asdict(state)).encode()
             ).decode(),
         )
-        return RedirectResponse(
+        response = RedirectResponse(
             auth_url,
             status_code=HTTPStatus.SEE_OTHER,
         )
+        response.set_cookie(
+            key=CookieNames.csrf,
+            value=state.csrf_token,
+            max_age=int(timedelta(hours=4).total_seconds()),
+            httponly=True,
+            secure=True,
+        )
+        return response

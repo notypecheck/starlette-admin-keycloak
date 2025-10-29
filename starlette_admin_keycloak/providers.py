@@ -1,4 +1,5 @@
 import base64
+import hmac
 import json
 from collections.abc import Sequence
 from http import HTTPStatus
@@ -14,7 +15,7 @@ from starlette.routing import Route
 from starlette_admin import BaseAdmin
 from starlette_admin.auth import AdminUser, AuthProvider, login_not_required
 
-from starlette_admin_keycloak._dto import StateDTO, TokenRefreshResult
+from starlette_admin_keycloak._dto import StateDTO
 from starlette_admin_keycloak.cookies import CookieNames
 from starlette_admin_keycloak.middleware import KeycloakAuthMiddleware
 from starlette_admin_keycloak.routes import Routes
@@ -51,16 +52,25 @@ class KeycloakAuthProvider(AuthProvider):
     async def _route_auth_callback(self, request: Request) -> Response:
         code = request.query_params.get("code")
         state_raw = request.query_params.get("state", None)
-        if code is None or state_raw is None:
-            return Response(status_code=HTTPStatus.BAD_REQUEST)
+        csrf_token = request.cookies.pop(CookieNames.csrf, None)
+        if code is None or state_raw is None or csrf_token is None:
+            response = Response(status_code=HTTPStatus.BAD_REQUEST)
+            response.delete_cookie(CookieNames.csrf)
+            return response
 
         state = StateDTO(**json.loads(base64.b64decode(state_raw)))
+        if not hmac.compare_digest(state.csrf_token, csrf_token):
+            response = Response(status_code=HTTPStatus.BAD_REQUEST)
+            response.delete_cookie(CookieNames.csrf)
+            return response
+
         tokens = await self._keycloak_openid.a_token(
             code=code,
             grant_type="authorization_code",
             redirect_uri=str(request.url_for(f"admin:{Routes.oauth_callback.name}")),
         )
-        access, refresh = tokens["access_token"], tokens["refresh_token"]
+        access = tokens["access_token"]
+        refresh = tokens["refresh_token"]
         response = RedirectResponse(state.next_url)
         response.set_cookie(
             key=CookieNames.access, value=access, httponly=True, secure=True
@@ -68,6 +78,7 @@ class KeycloakAuthProvider(AuthProvider):
         response.set_cookie(
             key=CookieNames.refresh, value=refresh, httponly=True, secure=True
         )
+        response.delete_cookie(CookieNames.csrf)
         return response
 
     def get_middleware(self, admin: "BaseAdmin") -> Middleware:  # noqa: ARG002
@@ -75,25 +86,30 @@ class KeycloakAuthProvider(AuthProvider):
             KeycloakAuthMiddleware, provider=self, keycloak_openid=self._keycloak_openid
         )
 
-    async def maybe_refresh_tokens(self, request: Request) -> TokenRefreshResult:
+    async def maybe_refresh_tokens(self, request: Request) -> None:
         access_token = request.cookies.get(CookieNames.access)
         if not access_token:
-            return TokenRefreshResult(should_remove_response_cookies=False)
+            return
+
         try:
             await self._keycloak_openid.a_decode_token(token=access_token)
         except JWTExpired:
             refresh_token = request.cookies[CookieNames.refresh]
             try:
                 await self._keycloak_openid.a_decode_token(refresh_token)
-            except (JWTExpired, JWException):
-                return TokenRefreshResult(should_remove_response_cookies=True)
+            except JWException:
+                request.cookies.pop(CookieNames.access, None)
+                request.cookies.pop(CookieNames.refresh, None)
+                return
 
             response = await self._keycloak_openid.a_refresh_token(
                 refresh_token=request.cookies[CookieNames.refresh]
             )
             request.cookies[CookieNames.access] = response["access_token"]
             request.cookies[CookieNames.refresh] = response["refresh_token"]
-        return TokenRefreshResult(should_remove_response_cookies=False)
+        except JWException:
+            request.cookies.pop(CookieNames.access, None)
+            request.cookies.pop(CookieNames.refresh, None)
 
     async def is_authenticated(self, request: Request) -> bool:
         try:

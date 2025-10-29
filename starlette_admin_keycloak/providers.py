@@ -39,8 +39,8 @@ class KeycloakAuthProvider(AuthProvider):
         admin.routes.extend(
             [
                 Route(
-                    path=Routes.openid_callback.path,
-                    name=Routes.openid_callback.name,
+                    path=Routes.oauth_callback.path,
+                    name=Routes.oauth_callback.name,
                     methods=["GET"],
                     endpoint=self._route_auth_callback,
                 )
@@ -58,7 +58,7 @@ class KeycloakAuthProvider(AuthProvider):
         tokens = await self._keycloak_openid.a_token(
             code=code,
             grant_type="authorization_code",
-            redirect_uri=str(request.url_for(f"admin:{Routes.openid_callback.name}")),
+            redirect_uri=str(request.url_for(f"admin:{Routes.oauth_callback.name}")),
         )
         access, refresh = tokens["access_token"], tokens["refresh_token"]
         response = RedirectResponse(state.next_url)

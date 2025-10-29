@@ -71,7 +71,7 @@ class KeycloakAuthMiddleware(BaseHTTPMiddleware):
                 response.delete_cookie(CookieNames.refresh)
             return response
 
-        redirect_url = request.url_for(f"admin:{Routes.openid_callback.name}")
+        redirect_url = request.url_for(f"admin:{Routes.oauth_callback.name}")
         state = StateDTO(next_url=str(request.url))
         auth_url = self._keycloak_openid.auth_url(
             redirect_uri=str(redirect_url),

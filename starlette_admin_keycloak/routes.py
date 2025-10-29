@@ -8,7 +8,7 @@ class RouteInfo:
 
 
 class Routes:
-    openid_callback = RouteInfo(
-        path="/auth/openid-callback",
+    oauth_callback = RouteInfo(
+        path="/auth/oauth-callback",
         name="starlette-admin-keycloak:callback",
     )

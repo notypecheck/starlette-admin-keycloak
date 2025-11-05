@@ -1,6 +1,6 @@
 [project]
 name = "starlette-admin-keycloak"
-version = "0.2.1"
+version = "0.3.0"
 description = "Keycloak authentication provider for starlette-admin"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -41,7 +41,7 @@ uvloop = "uvloop"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.2.1"
+version = "0.3.0"
 tag_format = "$version"
 version_files = [
     "pyproject.toml:version"

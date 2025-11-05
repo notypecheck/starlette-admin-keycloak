@@ -1,5 +1,6 @@
 import secrets
 import string
+from datetime import datetime, timezone
 
 
 def generate_secret_value(
@@ -7,3 +8,7 @@ def generate_secret_value(
     alphabet: str = string.ascii_letters + string.digits,
 ) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def utc_now() -> datetime:
+    return datetime.now(tz=timezone.utc)

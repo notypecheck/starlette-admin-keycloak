@@ -3,7 +3,7 @@ name = "starlette-admin-keycloak"
 version = "0.2.1"
 description = "Keycloak authentication provider for starlette-admin"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "python-keycloak>=5.8.0",
     "starlette-admin>=0.15.0",
@@ -49,7 +49,7 @@ version_files = [
 
 [tool.mypy]
 plugins = []
-
+python_version = "3.10"
 strict = true
 follow_imports = "normal"
 ignore_missing_imports = false
@@ -74,6 +74,7 @@ init_typed = true
 
 [tool.ruff]
 src = ["src", "tests"]
+target-version = "py310"
 
 [tool.ruff.lint]
 fixable = [

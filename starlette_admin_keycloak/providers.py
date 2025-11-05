@@ -1,11 +1,15 @@
+import asyncio
 import base64
+import dataclasses
 import hmac
 import json
 from collections.abc import Sequence
+from datetime import datetime, timedelta
 from http import HTTPStatus
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from jwcrypto.common import JWException
+from jwcrypto.jwk import JWK
 from jwcrypto.jwt import JWTExpired
 from keycloak import KeycloakOpenID
 from starlette.middleware import Middleware
@@ -16,9 +20,18 @@ from starlette_admin import BaseAdmin
 from starlette_admin.auth import AdminUser, AuthProvider, login_not_required
 
 from starlette_admin_keycloak._dto import StateDTO
+from starlette_admin_keycloak._utils import utc_now
 from starlette_admin_keycloak.cookies import CookieNames
 from starlette_admin_keycloak.middleware import KeycloakAuthMiddleware
 from starlette_admin_keycloak.routes import Routes
+
+T = TypeVar("T")
+
+
+@dataclasses.dataclass(slots=True, kw_only=True)
+class _CacheEntry(Generic[T]):
+    expires_at: datetime
+    obj: T
 
 
 class KeycloakAuthProvider(AuthProvider):
@@ -29,11 +42,16 @@ class KeycloakAuthProvider(AuthProvider):
         logout_path: str = "/logout",
         allow_routes: Sequence[str] | None = None,
         keycloak_openid: KeycloakOpenID,
+        cache_ttl: timedelta = timedelta(hours=1),
     ) -> None:
         super().__init__(
             login_path=login_path, logout_path=logout_path, allow_routes=allow_routes
         )
         self._keycloak_openid = keycloak_openid
+        self._cache_ttl = cache_ttl
+
+        self._public_key: _CacheEntry[JWK] | None = None
+        self._lock = asyncio.Lock()
 
     def setup_admin(self, admin: BaseAdmin) -> None:
         super().setup_admin(admin)
@@ -92,11 +110,10 @@ class KeycloakAuthProvider(AuthProvider):
             return
 
         try:
-            await self._keycloak_openid.a_decode_token(token=access_token)
+            await self._decode_token(token=access_token)
         except JWTExpired:
-            refresh_token = request.cookies[CookieNames.refresh]
             try:
-                await self._keycloak_openid.a_decode_token(refresh_token)
+                await self._decode_token(token=access_token)
             except JWException:
                 request.cookies.pop(CookieNames.access, None)
                 request.cookies.pop(CookieNames.refresh, None)
@@ -141,4 +158,22 @@ class KeycloakAuthProvider(AuthProvider):
         access_token = request.cookies.get(CookieNames.access)
         if not access_token:
             return None
-        return await self._keycloak_openid.a_decode_token(token=access_token)
+        return await self._decode_token(token=access_token)
+
+    async def _decode_token(self, token: str) -> dict[str, Any] | None:
+        now = utc_now()
+        if self._public_key is None or self._public_key.expires_at < now:
+            async with self._lock:
+                if self._public_key is None or self._public_key.expires_at < now:
+                    key_pem = (
+                        "-----BEGIN PUBLIC KEY-----\n"
+                        + await self._keycloak_openid.a_public_key()
+                        + "\n-----END PUBLIC KEY-----"
+                    )
+                    key = JWK.from_pem(key_pem.encode("utf-8"))
+                    self._public_key = _CacheEntry(
+                        expires_at=utc_now() + self._cache_ttl, obj=key
+                    )
+        return await self._keycloak_openid.a_decode_token(
+            token, key=self._public_key.obj
+        )
